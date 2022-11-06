@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 
@@ -16,11 +17,49 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@clu
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
+//jwt verify function
+//  function verifyJWT(req,res,next){
+//     const authHeader = req.headers.authorization;
+//     if(!authHeader){
+//      return   res.status(401).send({message: 'unauthorized access'})
+//     }
+//     const token = authHeader.split(' ')[1];
+//     jwt.verify(token,process.env.ACCESS_TOKEN_SECRET, function(err, decoded){
+//         if(err){
+//           return  res.status(401).send({message: 'unauthorized access'})
+//         }
+//         req.decoded = decoded;
+//         next()
+//     })
+// }
+function verifyJWT(req,res,next){
+    const authHeader = req.headers.authorization;
+    if(!authHeader){
+        return res.status(401).send({message: 'unauthorized access'}) 
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,function(err,decoded){
+        if(err){
+            return res.status(403).send({message: 'Forbidden access'}) 
+        }
+        req.decoded = decoded;
+        next()
+    })
+}
+
 async function run(){
 
     try{
         const serviceCollection = client.db('geniusCar').collection('services');
         const orderCollection = client.db('geniusCar').collection('orders');
+
+        app.post('/jwt',(req,res)=>{
+            const user = req.body;
+            //console.log(user);
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET,{expiresIn: '1h'})
+            res.send({token})
+        })
+
         //sob services table ke paite...client e dekanur jonno
         app.get('/services', async(req,res)=>{
             const query = {}//jodi sob data database theke pete cai
@@ -39,9 +78,15 @@ async function run(){
         })
 
 
-        //order dekte cai as a login user
+        //order dekte cai as a login user...order api
 
-        app.get('/orders',async(req,res)=>{
+        app.get('/orders', verifyJWT, async(req,res)=>{
+            const decoded = req.decoded;
+            console.log(decoded);
+            if(decoded.email !== req.query.email){
+                res.status(401).send({message: 'unauthorized access'})
+            }
+            //console.log(req.headers.authorization);
             let query = {};
             //jodi specific kunu id ba email diye order filter out korte cai
             if(req.query.email){
@@ -100,3 +145,5 @@ app.get('/',(req,res)=>{
 app.listen(port,()=>{
     console.log(`genius car running on port ${port}`);
 })
+
+//require('crypto').randomBytes(64).toString('hex') for make token
